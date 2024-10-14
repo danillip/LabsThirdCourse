@@ -1,0 +1,128 @@
+4 Task
+
+#include <Arduino.h>
+#include "TM1637Display.h"
+
+// Подключение дисплея
+#define CLK 50
+#define DIO 52
+
+// Пауза между отображениями (в миллисекундах)
+#define SHIFT_DELAY 800 // Пауза 0.8 секунды
+
+#define Q_PEG (SEG_A | SEG_B | SEG_F | SEG_G | SEG_C)  // Q
+#define U_PEG (SEG_B | SEG_C | SEG_D | SEG_E | SEG_F)  // U
+#define E_PEG (SEG_A | SEG_D | SEG_E | SEG_F | SEG_G)  // E
+#define F_PEG (SEG_A | SEG_E | SEG_F | SEG_G)          // F
+#define L_PEG (SEG_E | SEG_F | SEG_D)                  // L
+#define SPACE_SEG 0x00  // Пробел
+
+// Создаем массив сегментов, представляющий текст для отображения
+const uint8_t segments[] = {
+    SPACE_SEG, SPACE_SEG, SPACE_SEG, SPACE_SEG,
+    Q_PEG, U_PEG, E_PEG, U_PEG, E_PEG, SPACE_SEG,
+    F_PEG, U_PEG, L_PEG, L_PEG, SPACE_SEG, SPACE_SEG, SPACE_SEG, SPACE_SEG
+};
+
+const int textLength = sizeof(segments) / sizeof(segments[0]);
+TM1637Display display(CLK, DIO);
+
+void setup() {
+    display.setBrightness(0x0f); // Максимальная яркость
+}
+
+void loop() {
+    while (1) {
+        for (int shiftCount = 0; shiftCount < textLength - 4; shiftCount++) {
+            display.setSegments(segments + shiftCount);
+            delay(SHIFT_DELAY);
+        }
+    }
+}
+
+
+
+
+3 Task
+#include <Arduino.h>
+#include "TM1637Display.h"
+
+// Пины подключения дисплея
+#define CLK 50
+#define DIO 52
+
+// Пауза между отображениями (в миллисекундах)
+#define TEST_DELAY 1000 // Пауза 1 секунда
+
+TM1637Display display(CLK, DIO);
+
+void setup() {
+    display.setBrightness(0x0f); // Максимальная яркость
+}
+
+void loop() {
+    for (int num = -300; num <= 300; num += 10) { 
+        display.clear(); // Очистка
+
+        int wholePart = num / 100;  // Целая часть
+        int decimalPart = abs(num % 100);  // Дробная часть (два знака после запятой)
+
+        int displayValue = abs(wholePart) * 100 + decimalPart; // Подготовка значения для вывода
+
+        if (num < 0) {
+            display.showNumberDecEx(displayValue, 0xFF, true, 3, 1);  // Выводим число с двоеточием для дробной части
+
+            // Ставим минус на 1-й сегмент
+            uint8_t minusSegment[1] = {0b01000000};  // Минус знак
+            display.setSegments(minusSegment, 1, 0); // Отображаем минус
+        } else {
+            display.showNumberDecEx(displayValue, 0xFF, true, 3, 1); 
+        }
+
+        delay(TEST_DELAY);
+    }
+
+    while (1);
+}
+
+
+
+2Task
+
+#include <Arduino.h> 
+#include "TM1637Display.h" 
+ 
+// Module connection pins (Digital Pins) 
+#define CLK 50 
+#define DIO 52  
+ 
+// Пауза между отображениями (в миллисекундах) 
+#define TEST_DELAY 100 // Пауза 0.1 секунды 
+ 
+TM1637Display display(CLK, DIO); 
+ 
+void setup() { 
+    display.setBrightness(0x0f); // Максимальная яркость 
+} 
+ 
+void loop() { 
+    // Отображение "-" для чисел < 0 
+    for (int num = -100; num <= 100; num++) { 
+        // Чистилка дисплея
+        display.clear(); 
+         
+        // Если отрицательное 100, добавляем ведущий знак "-" 
+        if (num == -100) {
+            display.showNumberDec(num, false, 4, 0); // 4 разряда для числа -100
+        }
+        // Для других чисел, если отрицательное, добавляем ведущий знак "-"
+        else if (num < 0) { 
+            display.showNumberDec(num, false, 3, 0); // 3 разряда для знака минус 
+        } else { 
+            display.showNumberDec(num, false, 3, 0); // 3 разряда для положительных чисел (например "100") 
+        } 
+        delay(TEST_DELAY); // Пауза
+    } 
+     
+    while (1);
+}

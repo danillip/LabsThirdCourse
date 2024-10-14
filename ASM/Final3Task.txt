@@ -1,0 +1,229 @@
+Sketch.ino
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "Keyboard4x4.h"
+#include <EEPROM.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+int rowPins[4] = {9, 8, 7, 6};  // Пины строк
+int colPins[4] = {5, 4, 3, 2};  // Пины столбцов
+
+Keyboard4x4 keyboard(rowPins, colPins);
+
+uint16_t operand1 = 0, operand2 = 0;
+char operation = 0;
+uint16_t result = 0;
+bool isFirstOperand = true;
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  
+  // Чтение сохранённых данных из EEPROM
+  operand1 = EEPROM.read(0) | (EEPROM.read(1) << 8);  // Чтение первого операнда
+  operand2 = EEPROM.read(2) | (EEPROM.read(3) << 8);  // Чтение второго операнда
+  operation = EEPROM.read(4);  // Чтение операции
+  result = EEPROM.read(5) | (EEPROM.read(6) << 8);  // Чтение результата
+  
+  displayAll();
+}
+
+void loop() {
+  char key = keyboard.getKey();
+
+  if (key != 0) {  // Если клавиша была нажата
+    if (key >= '0' && key <= '9') {  // Нажата цифра
+      int num = key - '0';
+
+      if (isFirstOperand) {
+        operand1 = operand1 * 8 + num;  // Формирование первого операнда в восьмеричной системе
+      } else {
+        operand2 = operand2 * 8 + num;  // Формирование второго операнда в восьмеричной системе
+      }
+
+      displayAll();
+      saveToEEPROM();  // Сохранение в EEPROM
+    } else if (key == 'A') {  // Операция &
+      operation = '&';
+      isFirstOperand = false;
+      EEPROM.write(4, operation);  // Сохранение операции
+      displayAll();
+    } else if (key == 'B') {  // Операция |
+      operation = '|';
+      isFirstOperand = false;
+      EEPROM.write(4, operation);  // Сохранение операции
+      displayAll();
+    } else if (key == 'C') {  // Операция ^
+      operation = '^';
+      isFirstOperand = false;
+      EEPROM.write(4, operation);  // Сохранение операции
+      displayAll();
+    } else if (key == 'D') {  // Операция ->
+      operation = '>';
+      isFirstOperand = false;
+      EEPROM.write(4, operation);  // Сохранение операции
+      displayAll();
+    } else if (key == '=') {  // Вычисление результата
+      switch (operation) {
+        case '&':
+          result = operand1 & operand2;
+          break;
+        case '|':
+          result = operand1 | operand2;
+          break;
+        case '^':
+          result = operand1 ^ operand2;
+          break;
+        case '>':  // Импликация: A -> B = !A | B
+          result = (~operand1) | operand2;
+          break;
+      }
+
+      // Сохраняем результат в EEPROM
+      EEPROM.write(5, result & 0xFF);  // Сохранение младшего байта результата
+      EEPROM.write(6, (result >> 8) & 0xFF);  // Сохранение старшего байта результата
+
+      displayAll();
+      delay(2000);
+    } else if (key == '*') {  // Сброс
+      clearCalculator();
+    }
+  }
+}
+
+void displayAll() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  
+  // Число операция число =
+  lcd.print(operand1, OCT);  // Первое число
+  lcd.print(" ");
+  
+  // Выводим операцию
+  if (operation) {
+    lcd.print(operation); // Операция
+  } else {
+    lcd.print(" "); // Пробел, если операция не выбрана
+  }
+  
+  lcd.print(" ");
+  
+  // Выводим второй операнд
+  lcd.print(operand2, OCT);  // Второе число
+  lcd.print(" =");
+  
+  // Вторая строка - вывод результата
+  lcd.setCursor(0, 1);
+  lcd.print(result, OCT);  // Вывод результата в восьмеричной системе
+}
+
+void saveToEEPROM() {
+  EEPROM.write(0, operand1 & 0xFF);  // Сохранение младшего байта первого операнда
+  EEPROM.write(1, (operand1 >> 8) & 0xFF);  // Сохранение старшего байта первого операнда
+  EEPROM.write(2, operand2 & 0xFF);  // Сохранение младшего байта второго операнда
+  EEPROM.write(3, (operand2 >> 8) & 0xFF);  // Сохранение старшего байта второго операнда
+}
+
+void clearCalculator() {
+  operand1 = 0;
+  operand2 = 0;
+  operation = 0;
+  result = 0;  // Сброс результата
+  isFirstOperand = true;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Cleared");
+
+  // Очистка EEPROM
+  for (int i = 0; i < 7; i++) {
+    EEPROM.write(i, 0);
+  }
+}
+
+
+
+Keyboard4x4.cpp
+// Keyboard4x4.cpp
+
+//result = (~operand1) | operand2;
+#include "Keyboard4x4.h"
+
+Keyboard4x4::Keyboard4x4(int* rowPins, int* colPins) {
+  _rowPins = rowPins;
+  _colPins = colPins;
+  
+  // Пины выходы
+  for (int i = 0; i < 4; i++) {
+    pinMode(_rowPins[i], OUTPUT);
+    digitalWrite(_rowPins[i], HIGH);
+  }
+
+  // Пины входы
+  for (int i = 0; i < 4; i++) {
+    pinMode(_colPins[i], INPUT_PULLUP);
+  }
+  
+  lastKeyPressTime = 0;
+  lastKey = 0;
+  debounceDelay = 50;  // Время задержки дребезга (в мс)
+}
+
+char Keyboard4x4::getKey() {
+  unsigned long currentTime = millis();  // Текущее время
+
+  // По каждой строке
+  for (int row = 0; row < 4; row++) {
+    digitalWrite(_rowPins[row], LOW);
+    for (int col = 0; col < 4; col++) {
+      if (digitalRead(_colPins[col]) == LOW) {  // Если клавиша нажата
+        if (lastKey != _keymap[row][col]) {  // Новое нажатие клавиши
+          lastKeyPressTime = currentTime;  // Обновляем время нажатия
+          lastKey = _keymap[row][col];
+        }
+        
+        // Если прошло время задержки и клавиша стабильно нажата
+        if ((currentTime - lastKeyPressTime) > debounceDelay) {
+          while (digitalRead(_colPins[col]) == LOW);  // Ожидание отпускания
+          digitalWrite(_rowPins[row], HIGH);  // Деактивация строки
+          return lastKey;  // Возвращаем клавишу
+        }
+      }
+    }
+    digitalWrite(_rowPins[row], HIGH);  // Деактивация строки
+  }
+  
+  return 0;
+}
+
+
+
+Keyboard4x4.h
+// Keyboard4x4.h
+#ifndef Keyboard4x4_h
+#define Keyboard4x4_h
+
+#include <Arduino.h>
+
+class Keyboard4x4 {
+  public:
+    Keyboard4x4(int* rowPins, int* colPins);
+    char getKey();
+
+  private:
+    int* _rowPins;
+    int* _colPins;
+    char _keymap[4][4] = {
+      {'1', '2', '3', 'A'},
+      {'4', '5', '6', 'B'},
+      {'7', '8', '9', 'C'},
+      {'*', '0', '=', 'D'}
+    };
+    
+    unsigned long lastKeyPressTime;  // Время последнего нажатия клавиши
+    char lastKey;  // Последняя нажатая клавиша
+    unsigned long debounceDelay;  // Время задержки для защиты от дребезга
+};
+
+#endif
