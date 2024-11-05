@@ -1,0 +1,149 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "Keyboard4x4.h"
+#include <EEPROM.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+int rowPins[4] = {9, 8, 7, 6};  // Пины строк
+int colPins[4] = {5, 4, 3, 2};  // Пины столбцов
+
+Keyboard4x4 keyboard(rowPins, colPins);
+
+uint16_t operand1 = 0, operand2 = 0;
+char operation = 0;
+uint16_t result = 0;
+bool isFirstOperand = true;
+
+// Функция для чтения сохранённого результата из EEPROM
+uint16_t readSavedResult() {
+    return EEPROM.read(5) | (EEPROM.read(6) << 8);  // Чтение результата
+}
+
+void setup() {
+    lcd.init();
+    lcd.backlight();
+    lcd.clear();
+
+    displayAll();
+}
+
+void loop() {
+    char key = keyboard.getKey();
+
+    if (key != 0) {  // Если клавиша была нажата
+        if (key >= '0' && key <= '7') {  // Нажата цифра
+            int num = key - '0';
+
+            if (isFirstOperand) {
+                // Проверка на переполнение и накопление значения первого операнда
+                if (operand1 < 0x1FFF) {  // Проверка на максимальное значение (восьмеричная 7777)
+                    operand1 = operand1 * 8 + num;  // Формирование первого операнда в восьмеричной системе
+                }
+            } else {
+                // Проверка на переполнение и накопление значения второго операнда
+                if (operand2 < 0x1FFF) {  // Проверка на максимальное значение (восьмеричная 7777)
+                    operand2 = operand2 * 8 + num;  // Формирование второго операнда в восьмеричной системе
+                }
+            }
+
+            displayAll();
+        } else if (key == 'A') {  // Операция &
+            operation = '&';
+            isFirstOperand = false;
+            displayAll();
+        } else if (key == 'B') {  // Операция |
+            operation = '|';
+            isFirstOperand = false;
+            displayAll();
+        } else if (key == 'C') {  // Операция ^
+            operation = '^';
+            isFirstOperand = false;
+            displayAll();
+        } else if (key == 'D') {  // Операция ->
+            operation = '>';
+            isFirstOperand = false;
+            displayAll();
+        } else if (key == '=') {  // Вычисление результата
+            switch (operation) {
+                case '&':
+                    result = operand1 & operand2;
+                    break;
+                case '|':
+                    result = operand1 | operand2;
+                    break;
+                case '^':
+                    result = operand1 ^ operand2;
+                    break;
+                case '>':  // Импликация: A -> B = !A | B
+                    result = (~operand1) | operand2;
+                    break;
+            }
+
+            // Отображаем результат на дисплее
+            displayAll();
+        } else if (key == '9') {  // Кнопка сохранения результата
+            // Сохранение результата в EEPROM
+            EEPROM.write(5, result & 0xFF);  // Сохранение младшего байта результата
+            EEPROM.write(6, (result >> 8) & 0xFF);  // Сохранение старшего байта результата
+            // Опционально: Отображаем сообщение о сохранении
+            lcd.clear();
+            lcd.setCursor(0, 0);
+            lcd.print("Saved: ");
+            lcd.print(result, OCT);  // Отображение сохранённого результата
+            delay(2000);  // Задержка для отображения
+            displayAll();  // Возврат к предыдущему состоянию
+        } else if (key == '*') {  // Очистка всех операндов и операций
+            clearCalculator();
+        } else if (key == '8') {  // Вставка сохранённого результата
+            uint16_t savedResult = readSavedResult(); // Чтение сохранённого результата
+
+            if (isFirstOperand) {
+                operand1 = savedResult;  // Вставить сохранённый результат в первый операнд
+                isFirstOperand = false;  // Теперь ожидаем операцию
+            } else {
+                operand2 = savedResult;  // Вставить сохранённый результат во второй операнд
+                isFirstOperand = true;  // Теперь ожидаем первый операнд
+            }
+
+            displayAll();
+        }
+    }
+}
+
+void displayAll() {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+  
+    // Число операция число =
+    lcd.print(operand1, OCT);  // Первое число
+    lcd.print(" ");
+  
+    // Выводим операцию
+    if (operation) {
+        lcd.print(operation); // Операция
+    } else {
+        lcd.print(" "); // Пробел, если операция не выбрана
+    }
+  
+    lcd.print(" ");
+  
+    // Выводим второй операнд
+    lcd.print(operand2, OCT);  // Второе число
+    lcd.print(" =");
+  
+    // Вторая строка - вывод результата
+    lcd.setCursor(0, 1);
+    lcd.print(result, OCT);  // Вывод результата в восьмеричной системе
+}
+
+void clearCalculator() {
+    operand1 = 0;
+    operand2 = 0;
+    operation = 0;
+    result = 0;  // Сброс результата
+    isFirstOperand = true;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Cleared");
+}
